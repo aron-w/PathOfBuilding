@@ -550,7 +550,7 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 
 	-- Draw the nodes
 	for nodeId, node in pairs(spec.nodes) do
-		if node.group and not node.isProxy and not node.group.isProxy then
+		if node.group then--and not node.isProxy and not node.group.isProxy then
 			renderNode(nodeId, node)
 		end
 	end
