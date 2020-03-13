@@ -108,7 +108,7 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 	end
 
 	-- Load sprite sheets and build sprite map
-	local spriteMap = { }
+	self.spriteMap = { }
 	local spriteSheets = { }
 	for type, data in pairs(self.skillSprites) do
 		local maxZoom = data[#data]
@@ -119,10 +119,10 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 			spriteSheets[maxZoom.filename] = sheet
 		end
 		for name, coords in pairs(maxZoom.coords) do
-			if not spriteMap[name] then
-				spriteMap[name] = { }
+			if not self.spriteMap[name] then
+				self.spriteMap[name] = { }
 			end
-			spriteMap[name][type] = {
+			self.spriteMap[name][type] = {
 				handle = sheet.handle,
 				width = coords.w,
 				height = coords.h,
@@ -143,7 +143,7 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 		[5] = "centertemplar",
 		[6] = "centershadow"
 	}
-	local nodeOverlay = {
+	self.nodeOverlay = {
 		Normal = {
 			artWidth = 40,
 			alloc = "PSSkillFrameActive",
@@ -178,7 +178,7 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 			unalloc = "JewelFrameUnallocated"
 		}
 	}
-	for type, data in pairs(nodeOverlay) do
+	for type, data in pairs(self.nodeOverlay) do
 		local size = data.artWidth * 1.33
 		data.size = size
 		data.rsq = size * size
@@ -205,8 +205,8 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 	self.notableMap = { }
 	local nodeMap = { }
 	self.sockets = {}
-	local orbitMult = { [0] = 0, m_pi / 3, m_pi / 6, m_pi / 6 }
-	local orbitMultFull = {
+	self.orbitMult = { [0] = 0, m_pi / 3, m_pi / 6, m_pi / 6 }
+	self.orbitMultFull = {
 		[0] = 0,
 		[1] = 10 * m_pi / 180,
 		[2] = 20 * m_pi / 180,
@@ -248,7 +248,7 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 		[38] = 340 * m_pi / 180,
 		[39] = 350 * m_pi / 180
 	}
-	local orbitDist = { [0] = 0, 82, 162, 335, 493 }
+	self.orbitDist = { [0] = 0, 82, 162, 335, 493 }
 	for _, node in pairs(self.nodes) do
 		node.__index = node
 		node.linkedId = { }
@@ -298,12 +298,12 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 			node.type = "Normal"
 		end
 		-- Assign node artwork assets
-		node.sprites = spriteMap[node.icon]
+		node.sprites = self.spriteMap[node.icon]
 		if not node.sprites then
 			--error("missing sprite "..node.icon)
 			node.sprites = { }
 		end
-		node.overlay = nodeOverlay[node.type]
+		node.overlay = self.nodeOverlay[node.type]
 		if node.overlay then
 			node.rsq = node.overlay.rsq
 			node.size = node.overlay.size
@@ -318,11 +318,11 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 				group.isAscendancyStart = true
 			end
 			if node.o ~= 4 then
-				node.angle = node.oidx * orbitMult[node.o]
+				node.angle = node.oidx * self.orbitMult[node.o]
 			else
-				node.angle = orbitMultFull[node.oidx]
+				node.angle = self.orbitMultFull[node.oidx]
 			end
-			local dist = orbitDist[node.o]
+			local dist = self.orbitDist[node.o]
 			node.x = group.x + m_sin(node.angle) * dist
 			node.y = group.y - m_cos(node.angle) * dist
 		end
@@ -564,3 +564,143 @@ function PassiveTreeClass:BuildConnector(node1, node2)
 	return connector
 end
 
+function PassiveTreeClass:GenerateNode(nodeId, nodeType, group, orbit, orbitIndex, name, stats)
+	local node = {
+		["id"] = nodeId,
+		["isProxy"] = true,
+		["isGenerated"] = true, -- our own identifier for dynamically generated nodes
+		["stats"]= stats,
+		["group"]= group,
+		["g"] = group or 0,
+		["orbit"]= orbit or 0,
+		["o"]= orbit or 0,
+		["orbitIndex"]= orbitIndex or 0,
+		["oidx"] = orbitIndex or 0,
+		["dn"] = name or "UKNOWN",
+		["sd"] = {stats},
+		["type"] = nodeType or "Normal",
+		["icon"] = "Art/2DArt/SkillIcons/passives/MasteryBlank.png",
+	}
+
+	
+	if node.group then
+		node.group .ascendancyName = node.ascendancyName
+		if node.isAscendancyStart then
+			node.group .isAscendancyStart = true
+		end
+		if node.o ~= 4 then
+			node.angle = node.oidx * self.orbitMult[node.o]
+		else
+			node.angle = self.orbitMultFull[node.oidx]
+		end
+		local dist = self.orbitDist[node.o]
+		node.x = group.x + m_sin(node.angle) * dist
+		node.y = group.y - m_cos(node.angle) * dist
+	end
+
+	-- Assign node artwork assets
+	node.sprites = self.spriteMap[node.icon]
+	if not node.sprites then
+		--error("missing sprite "..node.icon)
+		node.sprites = { }
+	end
+	node.overlay = self.nodeOverlay[node.type]
+	if node.overlay then
+		node.rsq = node.overlay.rsq
+		node.size = node.overlay.size
+	end
+
+
+	-- Parse node modifier lines
+	node.mods = { }
+	node.modKey = ""
+	local i = 1
+	while node.sd[i] do
+		if node.sd[i]:match("\n") then
+			local line = node.sd[i]
+			local il = i
+			t_remove(node.sd, i)
+			for line in line:gmatch("[^\n]+") do
+				t_insert(node.sd, il, line)
+				il = il + 1
+			end
+		end
+		local line = node.sd[i]
+		local list, extra = modLib.parseMod[self.targetVersion](line)
+		if not list or extra then
+			-- Try to combine it with one or more of the lines that follow this one
+			local endI = i + 1
+			while node.sd[endI] do
+				local comb = line
+				for ci = i + 1, endI do
+					comb = comb .. " " .. node.sd[ci]
+				end
+				list, extra = modLib.parseMod[self.targetVersion](comb, true)
+				if list and not extra then
+					-- Success, add dummy mod lists to the other lines that were combined with this one
+					for ci = i + 1, endI do
+						node.mods[ci] = { list = { } }
+					end
+					break
+				end
+				endI = endI + 1
+			end
+		end
+		if not list then
+			-- Parser had no idea how to read this modifier
+			node.unknown = true
+		elseif extra then
+			-- Parser recognised this as a modifier but couldn't understand all of it
+			node.extra = true
+		else
+			for _, mod in ipairs(list) do
+				node.modKey = node.modKey.."["..modLib.formatMod(mod).."]"
+			end
+		end
+		node.mods[i] = { list = list, extra = extra }
+		i = i + 1
+		while node.mods[i] do
+			-- Skip any lines with dummy lists added by the line combining code
+			i = i + 1
+		end
+	end
+
+	-- Build unified list of modifiers from all recognised modifier lines
+	node.modList = new("ModList")
+	for _, mod in pairs(node.mods) do
+		if mod.list and not mod.extra then
+			for i, mod in ipairs(mod.list) do
+				mod.source = "Tree:"..node.id
+				if type(mod.value) == "table" and mod.value.mod then
+					mod.value.mod.source = mod.source
+				end
+				node.modList:AddMod(mod)
+			end
+		end
+	end
+	if node.type == "Keystone" then
+		node.keystoneMod = modLib.createMod("Keystone", "LIST", node.dn, "Tree"..node.id)
+	end
+
+	node["out"] = { } -- figure out
+	node["in"] = { } -- figure out
+
+	if nodeType == "Notable" then
+		node["isNotable"] = true
+	elseif nodeType == "Keystone" then
+		node["isKeystone"]= true
+	elseif nodeType == "Socket" then
+		node["isJewelSocket"] = true
+		node["expansionJewel"] = {
+			size = 0, -- fix
+			index = 0, -- fix
+			proxy = "", -- fix
+			parent = "", -- fix
+		}
+	end
+
+	node.__index = node
+	node.linkedId = { }
+	node.sprites = { }
+	return node
+end
