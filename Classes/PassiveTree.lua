@@ -261,6 +261,7 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 			-- To old format
 			node.id = node.skill
 			node.g = node.group
+			node.groupStr = node.group
 			node.o = node.orbit
 			node.oidx = node.orbitIndex
 			node.dn = node.name
@@ -562,3 +563,4 @@ function PassiveTreeClass:BuildConnector(node1, node2)
 	connector.vert = { Normal = connector, Intermediate = connector, Active = connector }
 	return connector
 end
+

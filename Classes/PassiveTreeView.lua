@@ -339,33 +339,66 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 	SetDrawLayer(nil, 20)
 	for _, connector in pairs(tree.connectors) do
 		local node1, node2 = spec.nodes[connector.nodeId1], spec.nodes[connector.nodeId2]
-
-		-- Determine the connector state
-		local state = "Normal"
-		if node1.alloc and node2.alloc then	
-			state = "Active"
-		elseif hoverPath then
-			if (node1.alloc or node1 == hoverNode or hoverPath[node1]) and (node2.alloc or node2 == hoverNode or hoverPath[node2]) then
-				state = "Intermediate"
+		if not(node1.isProxy or node2.isProxy) then
+			-- Determine the connector state
+			local state = "Normal"
+			if node1.alloc and node2.alloc then	
+				state = "Active"
+			elseif hoverPath then
+				if (node1.alloc or node1 == hoverNode or hoverPath[node1]) and (node2.alloc or node2 == hoverNode or hoverPath[node2]) then
+					state = "Intermediate"
+				end
 			end
-		end
 
-		-- Convert vertex coordinates to screen-space and add them to the coordinate array
-		local vert = connector.vert[state]
-		connector.c[1], connector.c[2] = treeToScreen(vert[1], vert[2])
-		connector.c[3], connector.c[4] = treeToScreen(vert[3], vert[4])
-		connector.c[5], connector.c[6] = treeToScreen(vert[5], vert[6])
-		connector.c[7], connector.c[8] = treeToScreen(vert[7], vert[8])
+			-- Convert vertex coordinates to screen-space and add them to the coordinate array
+			local vert = connector.vert[state]
+			connector.c[1], connector.c[2] = treeToScreen(vert[1], vert[2])
+			connector.c[3], connector.c[4] = treeToScreen(vert[3], vert[4])
+			connector.c[5], connector.c[6] = treeToScreen(vert[5], vert[6])
+			connector.c[7], connector.c[8] = treeToScreen(vert[7], vert[8])
 
-		if hoverDep and hoverDep[node1] and hoverDep[node2] then
-			-- Both nodes depend on the node currently being hovered over, so color the line red
-			SetDrawColor(1, 0, 0)
-		elseif connector.ascendancyName and connector.ascendancyName ~= spec.curAscendClassName then
-			-- Fade out lines in ascendancy classes other than the current one
-			SetDrawColor(0.75, 0.75, 0.75)
+			if hoverDep and hoverDep[node1] and hoverDep[node2] then
+				-- Both nodes depend on the node currently being hovered over, so color the line red
+				SetDrawColor(1, 0, 0)
+			elseif connector.ascendancyName and connector.ascendancyName ~= spec.curAscendClassName then
+				-- Fade out lines in ascendancy classes other than the current one
+				SetDrawColor(0.75, 0.75, 0.75)
+			end
+			DrawImageQuad(tree.assets[connector.type..state].handle, unpack(connector.c))
+			SetDrawColor(1, 1, 1)
 		end
-		DrawImageQuad(tree.assets[connector.type..state].handle, unpack(connector.c))
-		SetDrawColor(1, 1, 1)
+	end
+
+	for _, connector in pairs(spec.proxyConnectors) do
+		local node1, node2 = spec.nodes[connector.nodeId1], spec.nodes[connector.nodeId2]
+		if not(node1.isProxy or node2.isProxy) then
+			-- Determine the connector state
+			local state = "Normal"
+			if node1.alloc and node2.alloc then	
+				state = "Active"
+			elseif hoverPath then
+				if (node1.alloc or node1 == hoverNode or hoverPath[node1]) and (node2.alloc or node2 == hoverNode or hoverPath[node2]) then
+					state = "Intermediate"
+				end
+			end
+
+			-- Convert vertex coordinates to screen-space and add them to the coordinate array
+			local vert = connector.vert[state]
+			connector.c[1], connector.c[2] = treeToScreen(vert[1], vert[2])
+			connector.c[3], connector.c[4] = treeToScreen(vert[3], vert[4])
+			connector.c[5], connector.c[6] = treeToScreen(vert[5], vert[6])
+			connector.c[7], connector.c[8] = treeToScreen(vert[7], vert[8])
+
+			if hoverDep and hoverDep[node1] and hoverDep[node2] then
+				-- Both nodes depend on the node currently being hovered over, so color the line red
+				SetDrawColor(1, 0, 0)
+			elseif connector.ascendancyName and connector.ascendancyName ~= spec.curAscendClassName then
+				-- Fade out lines in ascendancy classes other than the current one
+				SetDrawColor(0.75, 0.75, 0.75)
+			end
+			DrawImageQuad(tree.assets[connector.type..state].handle, unpack(connector.c))
+			SetDrawColor(1, 1, 1)
+		end
 	end
 
 	if self.showHeatMap then
@@ -423,6 +456,8 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 						overlay = "JewelSocketActiveTimeless"
 					elseif jewel.baseName:match("Eye Jewel$") then
 						overlay = "JewelSocketActiveAbyss"
+					elseif jewel.baseName:match("Cluster Jewel$") then
+						overlay = "JewelSocketActivePrismatic"
 					end
 				end
 			else
@@ -550,7 +585,7 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 
 	-- Draw the nodes
 	for nodeId, node in pairs(spec.nodes) do
-		if node.group then--and not node.isProxy and not node.group.isProxy then
+		if node.group and not node.isProxy and not node.group.isProxy then
 			renderNode(nodeId, node)
 		end
 	end
@@ -835,3 +870,4 @@ function PassiveTreeViewClass:AddNodeTooltip(tooltip, node, build)
 		tooltip:AddLine(14, colorCodes.TIP.."Tip: Hold Ctrl to hide this tooltip.")
 	end
 end
+

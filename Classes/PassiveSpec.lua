@@ -40,6 +40,9 @@ local PassiveSpecClass = newClass("PassiveSpec", "UndoHandler", function(self, b
 		end
 	end
 
+	self.generatedNodes = {}
+	self.proxyConnectors = {}
+
 	-- List of currently allocated nodes
 	-- Keys are node IDs, values are nodes
 	self.allocNodes = { }
@@ -317,7 +320,6 @@ function PassiveSpecClass:AllocNode(node, altPath)
 			end
 		end
 	end
-
 	-- Rebuild all dependencies and paths for all allocated nodes
 	self:BuildAllDependsAndPaths()
 end
@@ -422,7 +424,9 @@ end
 function PassiveSpecClass:BuildAllDependsAndPaths()
 	-- This table will keep track of which nodes have been visited during each path-finding attempt
 	local visited = { }
-
+	self.proxyConnectors = {}
+	self.generatedNodes = {}
+	
 	-- Check all nodes for other nodes which depend on them (i.e. are only connected to the tree through that node)
 	for id, node in pairs(self.nodes) do
 		node.depends = wipeTable(node.depends)
@@ -449,6 +453,30 @@ function PassiveSpecClass:BuildAllDependsAndPaths()
 		end
 		if node.alloc then
 			node.depends[1] = node -- All nodes depend on themselves
+		end
+		
+		
+		if node.expansionJewel then 
+			local expansionJewel = self.build.itemsTab.items[self.jewels[node.id]]
+			if  expansionJewel 	and expansionJewel.base.tags.cluster_jewel 	and expansionJewel.base.tags.size <= node.expansionJewel.size	then
+				local proxyNode = self:FindFittingProxy(node, expansionJewel.base.tags.size)
+				local proxyGroup = proxyNode.group
+				--proxyNode.group.nodes = {proxyNode.__index}
+				-- for i = 1, expansionJewel.jewelData.numSmallPassives do
+				-- 	local generatedNode = self:GenerateNode((tonumber(node.id)+i),"Normal", proxyNode.groupStr,proxyNode.orbit, #proxyNode.group.nodes+1, "Small Cluster Node", expansionJewel.jewelData.smallPassiveMod)
+				-- 	self.nodes[generatedNode.id] = generatedNode
+				-- 	proxyNode.group.nodes[#proxyNode.group.nodes+1] = tostring(generatedNode.id)
+				-- end
+
+				t_insert(self.proxyConnectors,self.tree:BuildConnector(node,proxyNode))
+				local lastNode = proxyNode
+				for _,_nodeId in pairs(proxyNode.group.nodes) do
+					t_insert(self.proxyConnectors,self.tree:BuildConnector(lastNode,self.nodes[tonumber(_nodeId)]))
+					lastNode.isProxy = not node.alloc
+					lastNode = self.nodes[tonumber(_nodeId)]
+				end
+				proxyGroup.isProxy = not node.alloc
+			end
 		end
 	end
 	for id, node in pairs(self.allocNodes) do
@@ -531,4 +559,129 @@ end
 
 function PassiveSpecClass:RestoreUndoState(state)
 	self:DecodeURL(state)
+end
+
+function PassiveSpecClass:FindFittingProxy(node, size)
+	-- current node is the right size, return proxy
+	local nextProxy = self.nodes[tonumber(node.expansionJewel.proxy)]
+	if node.expansionJewel.size == size then 
+		return nextProxy
+	end
+	-- get next possible expansionJewel
+	for _,nodeId in pairs(nextProxy.group.nodes) do
+		if self.nodes[tonumber(nodeId)].expansionJewel then
+			return self:FindFittingProxy(self.nodes[tonumber(nodeId)],size)
+		end
+	end
+	return nil
+end
+
+function PassiveSpecClass:GenerateNode(nodeId, nodeType, groupId, orbit, orbitIndex, name, stats)
+	local node = {
+		["id"] = nodeId,
+		["isProxy"] = true,
+		["isGenerated"] = true, -- our own identifier for dynamically generated nodes
+		["stats"]= stats,
+		["group"]= groupId or 0,
+		["g"] = groupId or 0,
+		["orbit"]= orbit or 0,
+		["orbitIndex"]= orbitIndex or 0,
+		["dn"] = name or "UKNOWN",
+		["sd"] = {stats},
+		["type"] = nodeType or "Normal",
+		["icon"] = "Art/2DArt/SkillIcons/passives/MasteryBlank.png",
+	}
+
+	-- Parse node modifier lines
+	node.mods = { }
+	node.modKey = ""
+	local i = 1
+	while node.sd[i] do
+		if node.sd[i]:match("\n") then
+			local line = node.sd[i]
+			local il = i
+			t_remove(node.sd, i)
+			for line in line:gmatch("[^\n]+") do
+				t_insert(node.sd, il, line)
+				il = il + 1
+			end
+		end
+		local line = node.sd[i]
+		local list, extra = modLib.parseMod[self.tree.targetVersion](line)
+		if not list or extra then
+			-- Try to combine it with one or more of the lines that follow this one
+			local endI = i + 1
+			while node.sd[endI] do
+				local comb = line
+				for ci = i + 1, endI do
+					comb = comb .. " " .. node.sd[ci]
+				end
+				list, extra = modLib.parseMod[self.tree.targetVersion](comb, true)
+				if list and not extra then
+					-- Success, add dummy mod lists to the other lines that were combined with this one
+					for ci = i + 1, endI do
+						node.mods[ci] = { list = { } }
+					end
+					break
+				end
+				endI = endI + 1
+			end
+		end
+		if not list then
+			-- Parser had no idea how to read this modifier
+			node.unknown = true
+		elseif extra then
+			-- Parser recognised this as a modifier but couldn't understand all of it
+			node.extra = true
+		else
+			for _, mod in ipairs(list) do
+				node.modKey = node.modKey.."["..modLib.formatMod(mod).."]"
+			end
+		end
+		node.mods[i] = { list = list, extra = extra }
+		i = i + 1
+		while node.mods[i] do
+			-- Skip any lines with dummy lists added by the line combining code
+			i = i + 1
+		end
+	end
+
+	-- Build unified list of modifiers from all recognised modifier lines
+	node.modList = new("ModList")
+	for _, mod in pairs(node.mods) do
+		if mod.list and not mod.extra then
+			for i, mod in ipairs(mod.list) do
+				mod.source = "Tree:"..node.id
+				if type(mod.value) == "table" and mod.value.mod then
+					mod.value.mod.source = mod.source
+				end
+				node.modList:AddMod(mod)
+			end
+		end
+	end
+	if node.type == "Keystone" then
+		node.keystoneMod = modLib.createMod("Keystone", "LIST", node.dn, "Tree"..node.id)
+	end
+
+	node["out"] = { } -- figure out
+	node["in"] = { } -- figure out
+
+	if nodeType == "Notable" then
+		node["isNotable"] = true
+	elseif nodeType == "Keystone" then
+		node["isKeystone"]= true
+	elseif nodeType == "Socket" then
+		node["isJewelSocket"] = true
+		node["expansionJewel"] = {
+			size = 0, -- fix
+			index = 0, -- fix
+			proxy = "", -- fix
+			parent = "", -- fix
+		}
+	end
+
+	node.__index = node
+	node.linkedId = { }
+	node.sprites = { }
+	return node
 end

@@ -1766,6 +1766,10 @@ local specialModList = {
 	["affects passives in medium ring"] = { mod("JewelData", "LIST", { key = "radiusIndex", value = 5 }) },
 	["affects passives in large ring"] = { mod("JewelData", "LIST", { key = "radiusIndex", value = 6 }) },
 	["affects passives in very large ring"] = { mod("JewelData", "LIST", { key = "radiusIndex", value = 7 }) },
+	-- Aron1
+	["adds (%d+) passive skills"] = function(num) return { mod("JewelData", "LIST", { key = "numSmallPassives", value = num }) } end,
+	["added small passive skills grant:(.+)"] = function(_,str) return { mod("JewelData", "LIST", { key = "smallPassiveMod", value = str }) } end,
+
 	["(%d+)%% increased elemental damage per grand spectrum"] = function(num) return {
 		mod("ElementalDamage", "INC", num, { type = "Multiplier", var = "GrandSpectrum" }), 
 		mod("Multiplier:GrandSpectrum", "BASE", 1) 
@@ -2061,6 +2065,7 @@ local function getSimpleConv(srcList, dst, type, remove, factor)
 		end
 	end
 end
+
 local jewelOtherFuncs = {
 	["Strength from Passives in Radius is Transformed to Dexterity"] = getSimpleConv({"Str"}, "Dex", "BASE", true),
 	["Dexterity from Passives in Radius is Transformed to Strength"] = getSimpleConv({"Dex"}, "Str", "BASE", true),
